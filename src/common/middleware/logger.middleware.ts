@@ -18,6 +18,7 @@ export class LoggerMiddleware implements NestMiddleware {
 
     const origJson = res.json.bind(res);
     res.json = (body: unknown) => {
+      if (res.headersSent) return res;
       responsePayload = body;
       return origJson(body);
     };

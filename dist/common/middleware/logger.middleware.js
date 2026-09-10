@@ -25,6 +25,8 @@ let LoggerMiddleware = class LoggerMiddleware {
         let streamChunks = 0;
         const origJson = res.json.bind(res);
         res.json = (body) => {
+            if (res.headersSent)
+                return res;
             responsePayload = body;
             return origJson(body);
         };

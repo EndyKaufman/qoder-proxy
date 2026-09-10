@@ -12,6 +12,12 @@ let GlobalExceptionFilter = class GlobalExceptionFilter {
     catch(exception, host) {
         const ctx = host.switchToHttp();
         const response = ctx.getResponse();
+        // If headers were already sent (e.g. by a guard or streaming handler),
+        // we cannot send another response — just log and bail out.
+        if (response.headersSent) {
+            console.error('[GlobalExceptionFilter] Headers already sent, cannot respond:', exception);
+            return;
+        }
         let status = common_1.HttpStatus.INTERNAL_SERVER_ERROR;
         let message = 'Internal server error';
         let stack;

@@ -26,7 +26,8 @@ const isBenignQoderStderr = (text: string): boolean => {
   return (
     text.includes('failed to asynchronously prepare wasm') ||
     text.includes('function="_abort_js"') ||
-    text.includes('Aborted(LinkError: WebAssembly.instantiate()')
+    text.includes('Aborted(LinkError: WebAssembly.instantiate()') ||
+    text.includes('Ignored invalid setting "hooks.')
   );
 };
 

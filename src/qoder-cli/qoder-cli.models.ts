@@ -39,6 +39,12 @@ export const QODER_MODELS: ModelCatalogEntry[] = [
     description: 'Paid tier — high-performance model for demanding tasks.',
   },
   {
+    id: 'lite',
+    label: 'Lite (Fast & Efficient)',
+    tier: 'free',
+    description: 'Free tier — lightweight model, fast responses.',
+  },
+  {
     id: 'qmodel',
     label: 'Qwen3.6-Plus',
     tier: 'new',
@@ -150,7 +156,7 @@ export const getModelMapping = (requestedModel?: string): string => {
   const lower = requestedModel.toLowerCase();
 
   // Backward compatibility for old proxy model names.
-  if (lower === 'lite') return 'auto';
+  if (lower === 'lite') return 'lite';
   if (lower === 'efficient') return 'performance';
 
   // Claude family heuristics

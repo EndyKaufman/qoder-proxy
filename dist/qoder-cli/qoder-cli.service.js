@@ -53,7 +53,8 @@ const isBenignQoderStderr = (text) => {
         return false;
     return (text.includes('failed to asynchronously prepare wasm') ||
         text.includes('function="_abort_js"') ||
-        text.includes('Aborted(LinkError: WebAssembly.instantiate()'));
+        text.includes('Aborted(LinkError: WebAssembly.instantiate()') ||
+        text.includes('Ignored invalid setting "hooks.'));
 };
 let QoderCliService = class QoderCliService {
     constructor(configService, logStoreService) {
