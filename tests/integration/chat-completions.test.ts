@@ -1,12 +1,13 @@
 import request from 'supertest';
 import { buildApp } from './setup';
+import type { INestApplication } from '@nestjs/common';
 
 describe('POST /v1/chat/completions', () => {
-  let app: ReturnType<typeof buildApp>['app'];
-  let mocks: ReturnType<typeof buildApp>['mocks'];
+  let app: INestApplication;
+  let mocks: { mockRunQoderRequest: jest.Mock; mockCheckQoderCli: jest.Mock };
 
-  beforeAll(() => {
-    const ctx = buildApp();
+  beforeAll(async () => {
+    const ctx = await buildApp();
     app = ctx.app;
     mocks = ctx.mocks;
   });
@@ -19,7 +20,7 @@ describe('POST /v1/chat/completions', () => {
 
   describe('validation', () => {
     test('returns 400 when messages is missing', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/v1/chat/completions')
         .send({ model: 'auto' });
       expect(res.status).toBe(400);
@@ -27,14 +28,14 @@ describe('POST /v1/chat/completions', () => {
     });
 
     test('returns 400 when messages is empty array', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/v1/chat/completions')
         .send({ messages: [] });
       expect(res.status).toBe(400);
     });
 
     test('returns 400 for GET method', async () => {
-      const res = await request(app).get('/v1/chat/completions');
+      const res = await request(app.getHttpServer()).get('/v1/chat/completions');
       expect(res.status).toBe(400);
       expect(res.body.error.type).toBe('invalid_request_error');
     });
@@ -54,7 +55,7 @@ describe('POST /v1/chat/completions', () => {
         return { kill: jest.fn(), on: jest.fn() };
       });
 
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/v1/chat/completions')
         .send({ messages: [{ role: 'user', content: 'Hi' }], stream: false });
 
@@ -70,7 +71,7 @@ describe('POST /v1/chat/completions', () => {
         return { kill: jest.fn(), on: jest.fn() };
       });
 
-      await request(app)
+      await request(app.getHttpServer())
         .post('/v1/chat/completions')
         .send({ messages: [{ role: 'user', content: 'Hi' }] });
 
@@ -85,7 +86,7 @@ describe('POST /v1/chat/completions', () => {
         return { kill: jest.fn(), on: jest.fn() };
       });
 
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/v1/chat/completions')
         .send({ messages: [{ role: 'user', content: 'Hi' }] });
 
@@ -103,7 +104,7 @@ describe('POST /v1/chat/completions', () => {
         return { kill: jest.fn(), on: jest.fn() };
       });
 
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/v1/chat/completions')
         .send({ messages: [{ role: 'user', content: 'Hi' }], stream: true });
 
@@ -117,7 +118,7 @@ describe('POST /v1/chat/completions', () => {
         return { kill: jest.fn(), on: jest.fn() };
       });
 
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/v1/chat/completions')
         .send({ messages: [{ role: 'user', content: 'Hi' }], stream: true });
 
@@ -133,11 +134,13 @@ describe('POST /v1/chat/completions', () => {
         return { kill: jest.fn(), on: jest.fn() };
       });
 
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/v1/chat/completions')
         .send({ messages: [{ role: 'user', content: 'Hi' }], stream: true });
 
       expect(res.text).toContain('[DONE]');
     });
   });
+  afterAll(async () => { await app?.close(); });
+
 });

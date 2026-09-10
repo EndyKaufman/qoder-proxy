@@ -1,19 +1,24 @@
 import request from 'supertest';
 import { buildApp } from './setup';
+import type { INestApplication } from '@nestjs/common';
 
 describe('Public routes', () => {
-  let app: ReturnType<typeof buildApp>['app'];
-  let mocks: ReturnType<typeof buildApp>['mocks'];
+  let app: INestApplication;
+  let mocks: { mockRunQoderRequest: jest.Mock; mockCheckQoderCli: jest.Mock };
 
-  beforeAll(() => {
-    const ctx = buildApp();
+  beforeAll(async () => {
+    const ctx = await buildApp();
     app = ctx.app;
     mocks = ctx.mocks;
   });
 
+  afterAll(async () => {
+    await app?.close();
+  });
+
   describe('GET /', () => {
     test('returns 200 with server info', async () => {
-      const res = await request(app).get('/');
+      const res = await request(app.getHttpServer()).get('/');
       expect(res.status).toBe(200);
       expect(res.body.name).toBe('Qoder OpenAI Proxy');
       expect(res.body.version).toBeDefined();
@@ -28,7 +33,7 @@ describe('Public routes', () => {
   describe('GET /health', () => {
     test('returns 200 when qodercli is available', async () => {
       mocks.mockCheckQoderCli.mockResolvedValueOnce('available');
-      const res = await request(app).get('/health');
+      const res = await request(app.getHttpServer()).get('/health');
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('ok');
       expect(res.body.timestamp).toBeDefined();
@@ -36,14 +41,14 @@ describe('Public routes', () => {
 
     test('returns 503 when qodercli is unavailable', async () => {
       mocks.mockCheckQoderCli.mockResolvedValueOnce(null);
-      const res = await request(app).get('/health');
+      const res = await request(app.getHttpServer()).get('/health');
       expect(res.status).toBe(503);
       expect(res.body.status).toBe('degraded');
     });
 
     test('returns 200 when qodercli times out (truthy value)', async () => {
       mocks.mockCheckQoderCli.mockResolvedValueOnce('timeout');
-      const res = await request(app).get('/health');
+      const res = await request(app.getHttpServer()).get('/health');
       expect(res.status).toBe(200);
     });
   });

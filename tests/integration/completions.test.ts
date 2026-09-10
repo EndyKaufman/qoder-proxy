@@ -1,12 +1,13 @@
 import request from 'supertest';
 import { buildApp } from './setup';
+import type { INestApplication } from '@nestjs/common';
 
 describe('POST /v1/completions', () => {
-  let app: ReturnType<typeof buildApp>['app'];
-  let mocks: ReturnType<typeof buildApp>['mocks'];
+  let app: INestApplication;
+  let mocks: { mockRunQoderRequest: jest.Mock; mockCheckQoderCli: jest.Mock };
 
-  beforeAll(() => {
-    const ctx = buildApp();
+  beforeAll(async () => {
+    const ctx = await buildApp();
     app = ctx.app;
     mocks = ctx.mocks;
   });
@@ -16,7 +17,7 @@ describe('POST /v1/completions', () => {
   });
 
   test('returns 400 when prompt is missing', async () => {
-    const res = await request(app).post('/v1/completions').send({});
+    const res = await request(app.getHttpServer()).post('/v1/completions').send({});
     expect(res.status).toBe(400);
     expect(res.body.error.message).toContain('prompt is required');
   });
@@ -32,7 +33,7 @@ describe('POST /v1/completions', () => {
       return { kill: jest.fn(), on: jest.fn() };
     });
 
-    const res = await request(app)
+    const res = await request(app.getHttpServer())
       .post('/v1/completions')
       .send({ prompt: 'Once upon a time', stream: false });
 
@@ -47,7 +48,7 @@ describe('POST /v1/completions', () => {
       return { kill: jest.fn(), on: jest.fn() };
     });
 
-    const res = await request(app)
+    const res = await request(app.getHttpServer())
       .post('/v1/completions')
       .send({ prompt: 'Hello', stream: true });
 
@@ -64,11 +65,13 @@ describe('POST /v1/completions', () => {
       return { kill: jest.fn(), on: jest.fn() };
     });
 
-    const res = await request(app)
+    const res = await request(app.getHttpServer())
       .post('/v1/completions')
       .send({ prompt: 'Hello' });
 
     expect(res.status).toBe(500);
     expect(res.body.error.type).toBe('api_error');
   });
+  afterAll(async () => { await app?.close(); });
+
 });

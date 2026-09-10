@@ -1,14 +1,19 @@
 /**
  * Shared integration test helpers.
  *
- * Because jest.resetModules() creates fresh module instances,
- * each test file must set up its own mocks and app.
+ * Uses @nestjs/testing to create a test NestJS app with mocked QoderCliService.
  */
 
-import type { Express } from 'express';
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import * as express from 'express';
+import { AppModule } from '../../src/app.module';
+import { QoderCliService } from '../../src/qoder-cli/qoder-cli.service';
+import configuration from '../../src/config/configuration';
 
 interface BuildAppResult {
-  app: Express;
+  app: INestApplication;
   mocks: {
     mockRunQoderRequest: jest.Mock;
     mockCheckQoderCli: jest.Mock;
@@ -17,10 +22,9 @@ interface BuildAppResult {
 }
 
 /**
- * Build a fresh Express app with mocked spawn module.
- * Returns { app, mocks } where mocks has the current jest.fn() references.
+ * Build a fresh NestJS app with mocked QoderCliService.
  */
-const buildApp = (envOverrides: Record<string, string | undefined> = {}): BuildAppResult => {
+const buildApp = async (envOverrides: Record<string, string | undefined> = {}): Promise<BuildAppResult> => {
   // Apply env overrides
   const prevEnv: Record<string, string | undefined> = {};
   for (const [key, val] of Object.entries(envOverrides)) {
@@ -32,25 +36,27 @@ const buildApp = (envOverrides: Record<string, string | undefined> = {}): BuildA
     }
   }
 
-  jest.resetModules();
+  const mockRunQoderRequest = jest.fn();
+  const mockCheckQoderCli = jest.fn().mockResolvedValue('available');
 
-  const mockRunQoderRequest: jest.Mock = jest.fn();
-  const mockCheckQoderCli: jest.Mock = jest.fn().mockResolvedValue('available');
-
-  jest.mock('../../src/helpers/spawn', () => {
-    const actual = jest.requireActual('../../src/helpers/spawn') as Record<string, unknown>;
-    return {
+  const moduleFixture: TestingModule = await Test.createTestingModule({
+    imports: [AppModule],
+  })
+    .overrideProvider(QoderCliService)
+    .useValue({
       runQoderRequest: mockRunQoderRequest,
       checkQoderCli: mockCheckQoderCli,
-      extractEventText: actual.extractEventText,
-      hasVisibleAssistantText: actual.hasVisibleAssistantText,
-      deepFindText: actual.deepFindText,
-    };
-  });
+    })
+    .compile();
 
-  // Dynamic require after resetModules — server.js is JS, no types
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { app } = require('../../src/server') as { app: Express };
+  const app = moduleFixture.createNestApplication();
+
+  // Apply body parsers to match production setup
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.use(express.json({ limit: '10mb' }));
+  expressApp.use(express.urlencoded({ extended: true }));
+
+  await app.init();
 
   return {
     app,

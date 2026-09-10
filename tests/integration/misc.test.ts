@@ -1,17 +1,18 @@
 import request from 'supertest';
 import { buildApp } from './setup';
+import type { INestApplication } from '@nestjs/common';
 
 describe('Misc endpoints', () => {
-  let app: ReturnType<typeof buildApp>['app'];
+  let app: INestApplication;
 
-  beforeAll(() => {
-    const ctx = buildApp();
+  beforeAll(async () => {
+    const ctx = await buildApp();
     app = ctx.app;
   });
 
   describe('POST /v1/embeddings', () => {
     test('returns 501 Not Implemented', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/v1/embeddings')
         .send({ input: 'test', model: 'text-embedding-ada-002' });
       expect(res.status).toBe(501);
@@ -22,15 +23,17 @@ describe('Misc endpoints', () => {
 
   describe('Unknown /v1/* routes', () => {
     test('returns 404 for unknown endpoint', async () => {
-      const res = await request(app).get('/v1/unknown-endpoint');
+      const res = await request(app.getHttpServer()).get('/v1/unknown-endpoint');
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('endpoint_not_found');
       expect(res.body.error.message).toContain('Unknown endpoint');
     });
 
     test('returns 404 for /v1/images/generations', async () => {
-      const res = await request(app).post('/v1/images/generations').send({});
+      const res = await request(app.getHttpServer()).post('/v1/images/generations').send({});
       expect(res.status).toBe(404);
     });
   });
+  afterAll(async () => { await app?.close(); });
+
 });

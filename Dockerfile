@@ -16,12 +16,19 @@ RUN mkdir -p /root/.qoder \
 
 WORKDIR /app
 
-# Install production deps first (layer caching)
+# Install ALL deps (including dev) for the build step
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 # Copy source
 COPY src/ ./src/
+COPY tsconfig.json tsconfig.build.json nest-cli.json ./
+
+# Build TypeScript
+RUN npm run build
+
+# Remove dev deps after build
+RUN npm prune --omit=dev
 
 EXPOSE 3000
 
@@ -31,4 +38,4 @@ ENV NODE_ENV=production
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',_=>process.exit(1))"
 
-CMD ["node", "src/server.js"]
+CMD ["node", "dist/main.js"]

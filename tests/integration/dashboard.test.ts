@@ -1,21 +1,20 @@
 import request from 'supertest';
 import { buildApp } from './setup';
+import type { INestApplication } from '@nestjs/common';
+import { createToken } from '../../src/common/guards/dashboard-auth.guard';
 
 describe('Dashboard', () => {
-  let app: ReturnType<typeof buildApp>['app'];
-  let mocks: ReturnType<typeof buildApp>['mocks'];
-  let createToken: () => string;
+  let app: INestApplication;
+  let mocks: { mockRunQoderRequest: jest.Mock; mockCheckQoderCli: jest.Mock };
 
-  beforeAll(() => {
-    const ctx = buildApp({
+  beforeAll(async () => {
+    const ctx = await buildApp({
       DASHBOARD_ENABLED: 'true',
       DASHBOARD_PASSWORD: 'test-password',
       DASHBOARD_SECRET: 'test-secret-for-dashboard-tests',
     });
     app = ctx.app;
     mocks = ctx.mocks;
-    // Import createToken from the freshly-loaded module (same DASHBOARD_SECRET)
-    createToken = require('../../src/middleware/dashboardAuth').createToken as () => string;
   });
 
   beforeEach(() => {
@@ -26,7 +25,7 @@ describe('Dashboard', () => {
 
   describe('POST /dashboard/login', () => {
     test('redirects to /dashboard/ with valid password', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/dashboard/login')
         .type('form')
         .send({ password: 'test-password' });
@@ -38,7 +37,7 @@ describe('Dashboard', () => {
     });
 
     test('redirects to /dashboard/login?error=1 with wrong password', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .post('/dashboard/login')
         .type('form')
         .send({ password: 'wrong' });
@@ -49,7 +48,7 @@ describe('Dashboard', () => {
 
   describe('GET /dashboard/logout', () => {
     test('redirects to /dashboard/login and clears cookie', async () => {
-      const res = await request(app).get('/dashboard/logout');
+      const res = await request(app.getHttpServer()).get('/dashboard/logout');
       expect(res.status).toBe(302);
       expect(res.headers.location).toBe('/dashboard/login');
       const cookie = res.headers['set-cookie'][0];
@@ -61,12 +60,12 @@ describe('Dashboard', () => {
 
   describe('Protected API without auth', () => {
     test('returns 401 for /dashboard/api/config without cookie', async () => {
-      const res = await request(app).get('/dashboard/api/config');
+      const res = await request(app.getHttpServer()).get('/dashboard/api/config');
       expect(res.status).toBe(401);
     });
 
     test('returns 401 for /dashboard/api/status without cookie', async () => {
-      const res = await request(app).get('/dashboard/api/status');
+      const res = await request(app.getHttpServer()).get('/dashboard/api/status');
       expect(res.status).toBe(401);
     });
   });
@@ -74,12 +73,12 @@ describe('Dashboard', () => {
   describe('Protected API with valid auth', () => {
     let validCookie: string;
 
-    beforeAll(() => {
-      validCookie = createToken();
+    beforeAll(async () => {
+      validCookie = createToken('test-secret-for-dashboard-tests');
     });
 
     test('GET /dashboard/api/config returns config', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .get('/dashboard/api/config')
         .set('Cookie', `qoder_dash=${validCookie}`);
       expect(res.status).toBe(200);
@@ -88,7 +87,7 @@ describe('Dashboard', () => {
     });
 
     test('GET /dashboard/api/status returns status', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .get('/dashboard/api/status')
         .set('Cookie', `qoder_dash=${validCookie}`);
       expect(res.status).toBe(200);
@@ -99,7 +98,7 @@ describe('Dashboard', () => {
     });
 
     test('GET /dashboard/api/models returns models', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .get('/dashboard/api/models')
         .set('Cookie', `qoder_dash=${validCookie}`);
       expect(res.status).toBe(200);
@@ -108,7 +107,7 @@ describe('Dashboard', () => {
     });
 
     test('GET /dashboard/api/logs returns logs array', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .get('/dashboard/api/logs')
         .set('Cookie', `qoder_dash=${validCookie}`);
       expect(res.status).toBe(200);
@@ -116,7 +115,7 @@ describe('Dashboard', () => {
     });
 
     test('DELETE /dashboard/api/logs clears logs', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .delete('/dashboard/api/logs')
         .set('Cookie', `qoder_dash=${validCookie}`);
       expect(res.status).toBe(200);
@@ -124,7 +123,7 @@ describe('Dashboard', () => {
     });
 
     test('GET /dashboard/api/logs/system returns system logs', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .get('/dashboard/api/logs/system')
         .set('Cookie', `qoder_dash=${validCookie}`);
       expect(res.status).toBe(200);
@@ -132,11 +131,13 @@ describe('Dashboard', () => {
     });
 
     test('DELETE /dashboard/api/logs/system clears system logs', async () => {
-      const res = await request(app)
+      const res = await request(app.getHttpServer())
         .delete('/dashboard/api/logs/system')
         .set('Cookie', `qoder_dash=${validCookie}`);
       expect(res.status).toBe(200);
       expect(res.body.ok).toBe(true);
     });
   });
+  afterAll(async () => { await app?.close(); });
+
 });

@@ -1,14 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2021",
     "module": "commonjs",
     "strict": true,
     "esModuleInterop": true,
     "allowJs": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "types": ["jest", "node"],
-    "noEmit": true
+    "noEmit": true,
+    "rootDir": "."
   },
-  "include": ["tests/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
 }
