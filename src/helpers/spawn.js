@@ -127,6 +127,13 @@ const deepFindText = (value, depth = 0) => {
         if (t) return t;
       }
     }
+    // Fallback: recurse into all remaining keys
+    for (const key of Object.keys(value)) {
+      if (!priorityKeys.includes(key)) {
+        const t = deepFindText(value[key], depth + 1);
+        if (t) return t;
+      }
+    }
   }
   return "";
 };
@@ -408,4 +415,11 @@ const checkQoderCli = () =>
     }, 8000);
   });
 
-module.exports = { runQoderRequest, checkQoderCli };
+module.exports = {
+  runQoderRequest,
+  checkQoderCli,
+  // Exported for testing
+  extractEventText,
+  hasVisibleAssistantText,
+  deepFindText,
+};

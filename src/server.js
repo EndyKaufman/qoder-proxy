@@ -132,7 +132,11 @@ const start = async () => {
   });
 };
 
-start().catch((err) => {
-  console.error("Fatal startup error:", err);
-  process.exit(1);
-});
+module.exports = { app, start };
+
+if (require.main === module) {
+  start().catch((err) => {
+    console.error("Fatal startup error:", err);
+    process.exit(1);
+  });
+}
