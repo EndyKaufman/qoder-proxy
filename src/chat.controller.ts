@@ -7,13 +7,19 @@ import {
   UseGuards,
   Req,
   HttpCode,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiProperty } from '@nestjs/swagger';
 import { Request, Response } from 'express';
+import * as fs from 'fs';
 import { ApiKeyGuard } from './common/guards/api-key.guard';
 import { ConfigService } from '@nestjs/config';
 import { QoderCliService } from './qoder-cli/qoder-cli.service';
 import { LogStoreService } from './log-store/log-store.service';
+import { ProjectConfigService } from './project-config/project-config.service';
+import { McpGenService } from './mcp-gen/mcp-gen.service';
+import { WebhookService } from './webhook/webhook.service';
+import type { WebhookPayload } from './webhook/webhook.service';
 import { getModelMapping } from './qoder-cli/qoder-cli.models';
 import {
   messagesToPrompt,
@@ -57,6 +63,9 @@ class ChatCompletionRequestDto {
 
   @ApiProperty({ description: 'Tool choice', required: false })
   tool_choice?: unknown;
+
+  @ApiProperty({ description: 'Webhook URL for async callback after completion', required: false })
+  webhook_url?: string;
 }
 
 const setSSEHeaders = (res: Response) => {
@@ -69,12 +78,64 @@ const setSSEHeaders = (res: Response) => {
 @ApiTags('chat')
 @Controller('v1/chat/completions')
 @UseGuards(ApiKeyGuard)
-export class ChatController {
+export class ChatController implements OnModuleDestroy {
+  /** Track temp MCP config files to clean up */
+  private mcpTempFiles: string[] = [];
+
   constructor(
     private configService: ConfigService<AppConfig>,
     private qoderCliService: QoderCliService,
     private logStoreService: LogStoreService,
+    private projectConfigService: ProjectConfigService,
+    private mcpGenService: McpGenService,
+    private webhookService: WebhookService,
   ) {}
+
+  onModuleDestroy() {
+    // Clean up any leftover temp MCP config files
+    for (const f of this.mcpTempFiles) {
+      try { fs.unlinkSync(f); } catch { /* ignore */ }
+    }
+  }
+
+  /**
+   * Generate per-request MCP config file and system prompt from loaded projects.
+   * Returns paths/strings to pass to qodercli, or undefined if no projects configured.
+   */
+  private prepareProjectContext(): { mcpConfigPath: string; systemPrompt: string; cwd: string } | undefined {
+    const projects = this.projectConfigService.getAll();
+    if (projects.length === 0) return undefined;
+
+    const mcpConfig = this.mcpGenService.generateMcpConfig(projects);
+    const mcpConfigPath = this.mcpGenService.writeMcpConfigFile(mcpConfig);
+    this.mcpTempFiles.push(mcpConfigPath);
+
+    const dashboardAppsDir = this.configService.get<string>('DASHBOARD_APPS_DIR');
+    const systemPrompt = this.projectConfigService.generateCatalogPrompt(dashboardAppsDir);
+
+    // Use first project's path as default cwd, or PROJECTS_ROOT_DIR
+    const cwd = projects[0].path || this.configService.get<string>('PROJECTS_ROOT_DIR') || '/projects';
+
+    return { mcpConfigPath, systemPrompt, cwd };
+  }
+
+  /** Clean up a temp MCP config file after request completes */
+  private cleanupMcpConfig(mcpConfigPath?: string) {
+    if (!mcpConfigPath) return;
+    this.mcpTempFiles = this.mcpTempFiles.filter(f => f !== mcpConfigPath);
+    try { fs.unlinkSync(mcpConfigPath); } catch { /* ignore */ }
+  }
+
+  /** Fire-and-forget webhook callback */
+  private fireWebhook(
+    webhookUrl: string | undefined,
+    payload: WebhookPayload,
+  ) {
+    if (!webhookUrl) return;
+    this.webhookService.sendWebhook(webhookUrl, payload).catch((err) => {
+      console.error('[webhook] Unhandled error:', err.message);
+    });
+  }
 
   @Get()
   @ApiOperation({ summary: 'GET returns error (use POST)' })
@@ -100,6 +161,7 @@ export class ChatController {
       stream = false,
       tools,
       max_tokens,
+      webhook_url,
     } = body || {} as ChatCompletionRequestDto;
 
     const userAgent = req.headers['user-agent'] || 'unknown';
@@ -159,6 +221,9 @@ export class ChatController {
       flags.push('--max-output-tokens', qoderMaxOutputTokens);
     }
 
+    // Prepare per-request project context (MCP config + system prompt + cwd)
+    const projectCtx = this.prepareProjectContext();
+
     if (stream) {
       setSSEHeaders(res);
 
@@ -193,6 +258,9 @@ export class ChatController {
         model,
         flags,
         timeoutMs,
+        mcpConfigPath: projectCtx?.mcpConfigPath,
+        systemPrompt: projectCtx?.systemPrompt,
+        cwd: projectCtx?.cwd,
         onChunk: (data) => {
           const content = extractTextContent(data.message);
           const finishReason = data.message?.stop_reason || null;
@@ -216,6 +284,19 @@ export class ChatController {
           }
         },
         onDone: (code, stderr) => {
+          this.cleanupMcpConfig(projectCtx?.mcpConfigPath);
+          const duration = Date.now() - streamStartTime;
+          if (code !== 0) {
+            this.fireWebhook(webhook_url, {
+              status: 'error', model, error: `exit code ${code}: ${stderr?.substring(0, 200) || ''}`,
+              duration_ms: duration, timestamp: new Date().toISOString(),
+            });
+          } else {
+            this.fireWebhook(webhook_url, {
+              status: 'success', model, response: fullStreamText.substring(0, 5000),
+              duration_ms: duration, timestamp: new Date().toISOString(),
+            });
+          }
           if (clientAborted || res.writableEnded) return;
           if (code !== 0) {
             console.error('[chat/completions] qodercli exit code:', code, stderr?.substring(0, 200));
@@ -245,6 +326,11 @@ export class ChatController {
           res.end();
         },
         onError: (err) => {
+          this.cleanupMcpConfig(projectCtx?.mcpConfigPath);
+          this.fireWebhook(webhook_url, {
+            status: 'error', model, error: err.message,
+            duration_ms: Date.now() - streamStartTime, timestamp: new Date().toISOString(),
+          });
           if (clientAborted || res.writableEnded) return;
           console.error('[chat/completions] error:', err.message);
           res.write(
@@ -265,12 +351,16 @@ export class ChatController {
       let finishReason = 'stop';
       let allToolCalls: ReturnType<typeof extractToolCalls> extends infer T ? T extends Array<infer U> ? U[] : never : never = [];
       let clientAborted = false;
+      const nonStreamStart = Date.now();
 
       const child = this.qoderCliService.runQoderRequest({
         prompt,
         model,
         flags,
         timeoutMs,
+        mcpConfigPath: projectCtx?.mcpConfigPath,
+        systemPrompt: projectCtx?.systemPrompt,
+        cwd: projectCtx?.cwd,
         onChunk: (data) => {
           const content = extractTextContent(data.message);
           const toolCalls = extractToolCalls(data.message?.content as unknown[]);
@@ -282,6 +372,19 @@ export class ChatController {
           if (data.message?.stop_reason) finishReason = data.message.stop_reason;
         },
         onDone: (code, stderr) => {
+          this.cleanupMcpConfig(projectCtx?.mcpConfigPath);
+          const duration = Date.now() - nonStreamStart;
+          if (code !== 0) {
+            this.fireWebhook(webhook_url, {
+              status: 'error', model, error: `exit code ${code}: ${stderr?.substring(0, 200) || ''}`,
+              duration_ms: duration, timestamp: new Date().toISOString(),
+            });
+          } else {
+            this.fireWebhook(webhook_url, {
+              status: 'success', model, response: fullContent.substring(0, 5000),
+              duration_ms: duration, timestamp: new Date().toISOString(),
+            });
+          }
           if (clientAborted || res.writableEnded) return;
           if (code !== 0) {
             return res.status(500).json({
@@ -312,6 +415,11 @@ export class ChatController {
           }
         },
         onError: (err) => {
+          this.cleanupMcpConfig(projectCtx?.mcpConfigPath);
+          this.fireWebhook(webhook_url, {
+            status: 'error', model, error: err.message,
+            duration_ms: Date.now() - nonStreamStart, timestamp: new Date().toISOString(),
+          });
           if (clientAborted || res.writableEnded) return;
           res.status(err.code === 'TIMEOUT' ? 504 : 500).json({
             error: {

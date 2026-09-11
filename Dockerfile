@@ -14,6 +14,21 @@ RUN npm install -g @qoder-ai/qodercli \
 RUN mkdir -p /root/.qoder \
   && echo '{"autoUpdates":false}' > /root/.qoder.json
 
+# Pre-install MCP server packages for faster first request (cached in image layer).
+# Also install git for git-summary-mcp.
+RUN npm install -g \
+  @modelcontextprotocol/server-postgres \
+  @modelcontextprotocol/server-redis \
+  @pickstar-2002/minio-storage-mcp@latest \
+  @daanrongen/nats-mcp \
+  @0xshariq/docker-mcp-server \
+  git-summary-mcp \
+  @playwright/mcp \
+  && npx playwright install --with-deps chromium || true
+
+# Create directories for project configs and project code mounts
+RUN mkdir -p /configs /projects /dashboard-apps
+
 WORKDIR /app
 
 # Install ALL deps (including dev) for the build step

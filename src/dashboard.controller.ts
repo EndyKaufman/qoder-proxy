@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { DashboardAuthGuard, createToken, setCookie, clearCookie } from './common/guards/dashboard-auth.guard';
 import { QoderCliService } from './qoder-cli/qoder-cli.service';
 import { LogStoreService } from './log-store/log-store.service';
+import { DashboardAppsService } from './dashboard-apps/dashboard-apps.service';
 import { QODER_MODELS, getModelMapping } from './qoder-cli/qoder-cli.models';
 import {
   messagesToPrompt,
@@ -40,6 +41,7 @@ export class DashboardController {
     private configService: ConfigService<AppConfig>,
     private qoderCliService: QoderCliService,
     private logStoreService: LogStoreService,
+    private dashboardAppsService: DashboardAppsService,
   ) {}
 
   private async refreshQoderStatus(): Promise<string | null> {
@@ -105,6 +107,14 @@ export class DashboardController {
       authEnabled: !!this.configService.get<string>('API_KEY'),
       version: '2.0.0',
     };
+  }
+
+  @Get('api/apps')
+  @UseGuards(DashboardAuthGuard)
+  @ApiOperation({ summary: 'List dashboard mini-apps' })
+  @ApiResponse({ status: 200, description: 'List of dashboard apps with metadata' })
+  getApps() {
+    return { apps: this.dashboardAppsService.listApps() };
   }
 
   @Get('api/status')

@@ -11,6 +11,12 @@ export interface RunQoderRequestOptions {
   model: string;
   flags?: string[];
   timeoutMs?: number;
+  /** Path to MCP config JSON file (--mcp-config) */
+  mcpConfigPath?: string;
+  /** Additional system prompt (--append-system-prompt) */
+  systemPrompt?: string;
+  /** Working directory for qodercli (--cwd) */
+  cwd?: string;
   onChunk: (data: { type: string; subtype?: string; message?: QoderMessage }) => void;
   onDone: (code: number, stderr: string) => void;
   onError: (err: Error & { code?: string }) => void;
@@ -72,6 +78,9 @@ export class QoderCliService {
     prompt: string,
     model: string,
     flags: string[] = [],
+    mcpConfigPath?: string,
+    systemPrompt?: string,
+    cwd?: string,
   ): ChildProcess {
     const qoder = this.getQoderCliCommand();
     if (process.platform === 'win32') {
@@ -80,6 +89,9 @@ export class QoderCliService {
         .replace(/[&|<>^]/g, '^$&');
       const args = ['/c', qoder.cmd, '-p', safePrompt, '-f', 'stream-json'];
       if (model) args.push('--model', model);
+      if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+      if (systemPrompt) args.push('--append-system-prompt', systemPrompt);
+      if (cwd) args.push('--cwd', cwd);
       if (flags.length) args.push(...flags);
       return spawn('cmd.exe', args, {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -88,6 +100,9 @@ export class QoderCliService {
     } else {
       const args = ['-p', prompt, '-f', 'stream-json'];
       if (model) args.push('--model', model);
+      if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+      if (systemPrompt) args.push('--append-system-prompt', systemPrompt);
+      if (cwd) args.push('--cwd', cwd);
       if (flags.length) args.push(...flags);
       return spawn(qoder.cmd, args, {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -193,6 +208,9 @@ export class QoderCliService {
       model,
       flags = [],
       timeoutMs = 120_000,
+      mcpConfigPath,
+      systemPrompt,
+      cwd,
       onChunk,
       onDone,
       onError,
@@ -212,7 +230,7 @@ export class QoderCliService {
       fn();
     };
 
-    const child = this.spawnQoderCli(prompt, model, flags);
+    const child = this.spawnQoderCli(prompt, model, flags, mcpConfigPath, systemPrompt, cwd);
 
     child.on('error', (err: Error) => {
       console.error('[qodercli error]', err.message);

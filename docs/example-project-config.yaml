@@ -1,0 +1,48 @@
+# Example project configuration for qoder-proxy multi-project support.
+# Place YAML files like this one in the PROJECTS_CONFIG_DIR (default: /configs).
+# Each file defines one project with its service connections.
+
+# Required fields
+name: my-project
+path: /projects/my-project
+
+# Optional: alternative names the AI can use to refer to this project (case-insensitive)
+aliases:
+  - myproj
+  - проект-мой
+  - mp
+
+# Optional: auto-clone from GitHub if path doesn't exist
+# github_url: https://github.com/org/my-project.git
+
+# Optional: PostgreSQL connection — generates pg_my_project MCP server
+# postgres:
+#   host: localhost
+#   port: 5432
+#   user: postgres
+#   password: secret
+#   database: mydb
+
+# Optional: Redis connection — generates redis_my_project MCP server
+# redis:
+#   host: localhost
+#   port: 6379
+#   db: 0
+
+# Optional: NATS connection — generates nats_my_project MCP server
+# nats:
+#   url: nats://localhost:4222
+
+# Optional: MinIO connection — generates minio_my_project MCP server
+# minio:
+#   endpoint: localhost
+#   port: 9000
+#   access_key: minioadmin
+#   secret_key: minioadmin
+#   bucket: my-bucket
+#   use_ssl: false
+
+# Optional: Docker connection — generates shared "docker" MCP server (no prefix)
+# Only one project needs to define this; it's shared across all projects.
+# docker:
+#   host: unix:///var/run/docker.sock
