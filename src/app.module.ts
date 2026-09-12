@@ -13,6 +13,10 @@ import { McpGenService } from './mcp-gen/mcp-gen.service';
 import { WebhookService } from './webhook/webhook.service';
 import { DashboardAppsService } from './dashboard-apps/dashboard-apps.service';
 import { ConnectionRegistry } from './dashboard-apps/connection-registry';
+import { PluginStorageService } from './plugin-storage/plugin-storage.service';
+import { PluginLoaderService } from './plugin-manager/plugin-loader.service';
+import { PluginCreationService } from './plugin-manager/plugin-creation.service';
+import { PluginController } from './plugin-controller';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { APP_FILTER } from '@nestjs/core';
@@ -30,6 +34,7 @@ import { APP_FILTER } from '@nestjs/core';
     CompletionsController,
     ModelsController,
     DashboardController,
+    PluginController,
   ],
   providers: [
     QoderCliService,
@@ -39,6 +44,9 @@ import { APP_FILTER } from '@nestjs/core';
     WebhookService,
     DashboardAppsService,
     ConnectionRegistry,
+    PluginStorageService,
+    PluginLoaderService,
+    PluginCreationService,
     {
       provide: APP_FILTER,
       useClass: GlobalExceptionFilter,

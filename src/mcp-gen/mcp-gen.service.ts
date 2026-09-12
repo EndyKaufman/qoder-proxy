@@ -31,7 +31,7 @@ export class McpGenService {
   /**
    * Generate a full MCP config object from the list of projects.
    */
-  generateMcpConfig(projects: ProjectConfig[]): McpConfig {
+  generateMcpConfig(projects: ProjectConfig[], pluginsDbPath?: string): McpConfig {
     const servers: Record<string, McpServerEntry> = {};
     let hasDocker = false;
 
@@ -108,6 +108,25 @@ export class McpGenService {
         command: 'npx',
         args: ['-y', '@playwright/mcp'],
       };
+    }
+
+    // Global plugin MCP servers (filesystem, fetch, sqlite)
+    if (projects.length > 0) {
+      const firstProjectPath = projects[0].path || '/projects';
+      servers['filesystem'] = {
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-filesystem', firstProjectPath],
+      };
+      servers['fetch'] = {
+        command: 'npx',
+        args: ['-y', '@modelcontextprotocol/server-fetch'],
+      };
+      if (pluginsDbPath) {
+        servers['sqlite'] = {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-sqlite', pluginsDbPath],
+        };
+      }
     }
 
     return { mcpServers: servers };

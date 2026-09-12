@@ -69,6 +69,8 @@ let QoderCliService = class QoderCliService {
             NO_BROWSER: '1',
             CI: '1',
             HOME: process.env.HOME || '/root',
+            // Lazy-load MCP servers to reduce first-turn overhead
+            QODER_MCP_LAZY: '1',
         };
     }
     getQoderCliCommand() {
@@ -87,7 +89,7 @@ let QoderCliService = class QoderCliService {
         }
         return { cmd: 'qodercli', viaCmd: false };
     }
-    spawnQoderCli(prompt, model, flags = []) {
+    spawnQoderCli(prompt, model, flags = [], mcpConfigPath, systemPrompt, cwd) {
         const qoder = this.getQoderCliCommand();
         if (process.platform === 'win32') {
             const safePrompt = prompt
@@ -96,6 +98,14 @@ let QoderCliService = class QoderCliService {
             const args = ['/c', qoder.cmd, '-p', safePrompt, '-f', 'stream-json'];
             if (model)
                 args.push('--model', model);
+            if (mcpConfigPath)
+                args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
+            if (systemPrompt)
+                args.push('--append-system-prompt', systemPrompt);
+            if (cwd)
+                args.push('--cwd', cwd);
+            // Proxy optimizations: no disk sessions, no interactive permission prompts
+            args.push('--no-session-persistence', '--permission-mode', 'bypass_permissions');
             if (flags.length)
                 args.push(...flags);
             return (0, child_process_1.spawn)('cmd.exe', args, {
@@ -107,6 +117,14 @@ let QoderCliService = class QoderCliService {
             const args = ['-p', prompt, '-f', 'stream-json'];
             if (model)
                 args.push('--model', model);
+            if (mcpConfigPath)
+                args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
+            if (systemPrompt)
+                args.push('--append-system-prompt', systemPrompt);
+            if (cwd)
+                args.push('--cwd', cwd);
+            // Proxy optimizations: no disk sessions, no interactive permission prompts
+            args.push('--no-session-persistence', '--permission-mode', 'bypass_permissions');
             if (flags.length)
                 args.push(...flags);
             return (0, child_process_1.spawn)(qoder.cmd, args, {
@@ -208,7 +226,7 @@ let QoderCliService = class QoderCliService {
         return this.deepFindText(data);
     }
     runQoderRequest(opts) {
-        const { prompt, model, flags = [], timeoutMs = 120_000, onChunk, onDone, onError, } = opts;
+        const { prompt, model, flags = [], timeoutMs = 120_000, mcpConfigPath, systemPrompt, cwd, onChunk, onDone, onError, } = opts;
         let buffer = '';
         let stderrOutput = '';
         let settled = false;
@@ -223,7 +241,7 @@ let QoderCliService = class QoderCliService {
                 clearTimeout(timeoutHandle);
             fn();
         };
-        const child = this.spawnQoderCli(prompt, model, flags);
+        const child = this.spawnQoderCli(prompt, model, flags, mcpConfigPath, systemPrompt, cwd);
         child.on('error', (err) => {
             console.error('[qodercli error]', err.message);
         });

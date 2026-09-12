@@ -1,0 +1,12 @@
+{
+  "name": "demo-project-seed",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "seed": "node seed.js"
+  },
+  "dependencies": {
+    "minio": "^8.0.0",
+    "redis": "^4.7.0"
+  }
+}

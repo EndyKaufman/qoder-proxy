@@ -200,7 +200,7 @@ export class ProjectConfigService extends EventEmitter implements OnModuleInit, 
    * Generate a system prompt section listing all projects, their aliases,
    * paths, and available MCP servers. Used with --append-system-prompt.
    */
-  generateCatalogPrompt(dashboardAppsDir?: string): string {
+  generateCatalogPrompt(dashboardAppsDir?: string, plugins?: Array<{ slug: string; name: string; description: string; version: string | null }>): string {
     const projects = this.getAll();
     if (projects.length === 0) return '';
 
@@ -243,6 +243,20 @@ export class ProjectConfigService extends EventEmitter implements OnModuleInit, 
       lines.push('controller.js exports: { routes: [{method, path, handler}], setupStream? }');
       lines.push('Use getPgConnection(projectName), getRedisConnection(projectName) etc. from the connection registry.');
       lines.push('');
+    }
+
+    // Plugins
+    if (plugins && plugins.length > 0) {
+      lines.push('## Available Plugins');
+      lines.push('');
+      for (const p of plugins) {
+        const ver = p.version ? ` (v${p.version})` : '';
+        lines.push(`### ${p.name} (${p.slug})${ver}`);
+        lines.push(`- Description: ${p.description || 'No description'}`);
+        lines.push(`- URL: /plugins/${p.slug}/`);
+        lines.push(`- API: /plugins/${p.slug}/... (see plugin routes)`);
+        lines.push('');
+      }
     }
 
     return lines.join('\n');

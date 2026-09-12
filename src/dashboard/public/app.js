@@ -6,7 +6,7 @@ const state = {
   page: 'endpoints',
   config: {},
   models: [],
-  chat: { messages: [], model: 'auto', streaming: false, streamMode: 'stream' },
+  chat: { messages: [], model: 'lite', streaming: false, streamMode: 'stream' },
   logs: { entries: [], filter: '', autoRefresh: false, timer: null, expanded: null },
   sysLogs: { entries: [], autoRefresh: false, timer: null },
 };
@@ -51,6 +51,12 @@ function mdToHtml(text) {
   h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
   // bold
   h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // markdown links [text](url)
+  h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // bare URLs (http/https) — auto-link
+  h = h.replace(/(?<!["=])(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  // bare plugin paths (/plugins/...) — auto-link
+  h = h.replace(/(?<!["=])(\/plugins\/[a-zA-Z0-9_-]+\/[^\s<]*)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   // line breaks
   h = h.replace(/\n/g, '<br>');
   return h;
@@ -124,7 +130,10 @@ async function init() {
     ]);
     state.config  = cfg;
     state.models  = mdl.models || [];
-    if (state.models.length) state.chat.model = state.models[0].id;
+    if (state.models.length) {
+      const liteModel = state.models.find((m) => m.id === 'lite');
+      state.chat.model = liteModel ? 'lite' : state.models[0].id;
+    }
 
     await fetchStatus();
     setInterval(fetchStatus, 15000);
@@ -219,7 +228,7 @@ function renderPlayground() {
       <div class="pg-toolbar">
         <div class="model-select-wrap" id="model-wrap">
           <button class="model-select-btn" id="model-btn" onclick="toggleModelDropdown()">
-            <span id="model-label-display">auto</span>
+            <span id="model-label-display">lite</span>
             <span class="tier-badge tier-free" id="model-tier-display">free</span>
             <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </button>

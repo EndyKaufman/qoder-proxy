@@ -24,10 +24,13 @@ RUN npm install -g \
   @0xshariq/docker-mcp-server \
   git-summary-mcp \
   @playwright/mcp \
+  @modelcontextprotocol/server-filesystem \
+  @modelcontextprotocol/server-fetch \
+  @modelcontextprotocol/server-sqlite \
   && npx playwright install --with-deps chromium || true
 
 # Create directories for project configs and project code mounts
-RUN mkdir -p /configs /projects /dashboard-apps
+RUN mkdir -p /configs /projects /dashboard-apps /data
 
 WORKDIR /app
 
@@ -46,6 +49,8 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 EXPOSE 3000
+
+VOLUME /data
 
 ENV NODE_ENV=production
 

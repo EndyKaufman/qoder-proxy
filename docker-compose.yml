@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  qoder-proxy:
+    build: .
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./data:/data
+      - ./configs:/configs
+    environment:
+      - QODER_PERSONAL_ACCESS_TOKEN=${QODER_PERSONAL_ACCESS_TOKEN}
+      - PROXY_API_KEY=${PROXY_API_KEY}
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+      - DASHBOARD_ENABLED=true
+      - PROJECTS_CONFIG_DIR=/configs
+      - PLUGINS_DB_PATH=/data/plugins.db
+      - PLUGINS_FILES_DIR=/data/plugins
+    restart: unless-stopped

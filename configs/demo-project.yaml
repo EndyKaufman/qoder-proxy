@@ -1,0 +1,26 @@
+name: demo-project
+path: ./examples/demo-project
+aliases:
+  - demo
+  - test-project
+
+postgres:
+  host: localhost
+  port: 54321
+  user: demo
+  password: demo
+  database: demo
+
+redis:
+  host: localhost
+  port: 63791
+  db: 0
+
+minio:
+  endpoint: localhost
+  port: 9100
+  access_key: minioadmin
+  secret_key: minioadmin
+
+nats:
+  url: nats://localhost:42222

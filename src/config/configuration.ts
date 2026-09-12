@@ -16,6 +16,8 @@ export interface AppConfig {
   PROJECTS_CONFIG_DIR: string;
   PROJECTS_ROOT_DIR: string;
   DASHBOARD_APPS_DIR: string;
+  PLUGINS_DB_PATH: string;
+  PLUGINS_FILES_DIR: string;
 }
 
 export default (): AppConfig => ({
@@ -48,4 +50,8 @@ export default (): AppConfig => ({
   PROJECTS_CONFIG_DIR: process.env.PROJECTS_CONFIG_DIR || '/configs',
   PROJECTS_ROOT_DIR: process.env.PROJECTS_ROOT_DIR || '/projects',
   DASHBOARD_APPS_DIR: process.env.DASHBOARD_APPS_DIR || '/dashboard-apps',
+
+  // Plugin storage
+  PLUGINS_DB_PATH: process.env.PLUGINS_DB_PATH || '/data/plugins.db',
+  PLUGINS_FILES_DIR: process.env.PLUGINS_FILES_DIR || '/data/plugins',
 });

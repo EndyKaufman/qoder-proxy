@@ -55,4 +55,11 @@ exports.default = () => ({
     // Logging
     LOG_MAX_ENTRIES: parseInt(process.env.LOG_MAX_ENTRIES || '') || 500,
     LOG_BODY_MAX_BYTES: parseInt(process.env.LOG_BODY_MAX_BYTES || '') || 8192,
+    // Multi-project support
+    PROJECTS_CONFIG_DIR: process.env.PROJECTS_CONFIG_DIR || '/configs',
+    PROJECTS_ROOT_DIR: process.env.PROJECTS_ROOT_DIR || '/projects',
+    DASHBOARD_APPS_DIR: process.env.DASHBOARD_APPS_DIR || '/dashboard-apps',
+    // Plugin storage
+    PLUGINS_DB_PATH: process.env.PLUGINS_DB_PATH || '/data/plugins.db',
+    PLUGINS_FILES_DIR: process.env.PLUGINS_FILES_DIR || '/data/plugins',
 });

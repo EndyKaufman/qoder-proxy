@@ -20,6 +20,15 @@ const models_controller_1 = require("./models.controller");
 const dashboard_controller_1 = require("./dashboard.controller");
 const qoder_cli_service_1 = require("./qoder-cli/qoder-cli.service");
 const log_store_service_1 = require("./log-store/log-store.service");
+const project_config_service_1 = require("./project-config/project-config.service");
+const mcp_gen_service_1 = require("./mcp-gen/mcp-gen.service");
+const webhook_service_1 = require("./webhook/webhook.service");
+const dashboard_apps_service_1 = require("./dashboard-apps/dashboard-apps.service");
+const connection_registry_1 = require("./dashboard-apps/connection-registry");
+const plugin_storage_service_1 = require("./plugin-storage/plugin-storage.service");
+const plugin_loader_service_1 = require("./plugin-manager/plugin-loader.service");
+const plugin_creation_service_1 = require("./plugin-manager/plugin-creation.service");
+const plugin_controller_1 = require("./plugin-controller");
 const logger_middleware_1 = require("./common/middleware/logger.middleware");
 const global_exception_filter_1 = require("./common/filters/global-exception.filter");
 const core_1 = require("@nestjs/core");
@@ -45,10 +54,19 @@ exports.AppModule = AppModule = __decorate([
             completions_controller_1.CompletionsController,
             models_controller_1.ModelsController,
             dashboard_controller_1.DashboardController,
+            plugin_controller_1.PluginController,
         ],
         providers: [
             qoder_cli_service_1.QoderCliService,
             log_store_service_1.LogStoreService,
+            project_config_service_1.ProjectConfigService,
+            mcp_gen_service_1.McpGenService,
+            webhook_service_1.WebhookService,
+            dashboard_apps_service_1.DashboardAppsService,
+            connection_registry_1.ConnectionRegistry,
+            plugin_storage_service_1.PluginStorageService,
+            plugin_loader_service_1.PluginLoaderService,
+            plugin_creation_service_1.PluginCreationService,
             {
                 provide: core_1.APP_FILTER,
                 useClass: global_exception_filter_1.GlobalExceptionFilter,

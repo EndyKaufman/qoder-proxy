@@ -8,6 +8,9 @@ yarn-error.log
 Thumbs.db
 .env
 
+# Local data directory (SQLite DB, plugin files)
+data/
+
 # Testing artifacts
 cookies.txt
 nul

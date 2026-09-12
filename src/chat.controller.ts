@@ -20,6 +20,7 @@ import { ProjectConfigService } from './project-config/project-config.service';
 import { McpGenService } from './mcp-gen/mcp-gen.service';
 import { WebhookService } from './webhook/webhook.service';
 import type { WebhookPayload } from './webhook/webhook.service';
+import { PluginStorageService } from './plugin-storage/plugin-storage.service';
 import { getModelMapping } from './qoder-cli/qoder-cli.models';
 import {
   messagesToPrompt,
@@ -89,6 +90,7 @@ export class ChatController implements OnModuleDestroy {
     private projectConfigService: ProjectConfigService,
     private mcpGenService: McpGenService,
     private webhookService: WebhookService,
+    private pluginStorageService: PluginStorageService,
   ) {}
 
   onModuleDestroy() {
@@ -106,12 +108,16 @@ export class ChatController implements OnModuleDestroy {
     const projects = this.projectConfigService.getAll();
     if (projects.length === 0) return undefined;
 
-    const mcpConfig = this.mcpGenService.generateMcpConfig(projects);
+    const mcpConfig = this.mcpGenService.generateMcpConfig(projects, this.configService.get<string>('PLUGINS_DB_PATH'));
     const mcpConfigPath = this.mcpGenService.writeMcpConfigFile(mcpConfig);
     this.mcpTempFiles.push(mcpConfigPath);
 
     const dashboardAppsDir = this.configService.get<string>('DASHBOARD_APPS_DIR');
-    const systemPrompt = this.projectConfigService.generateCatalogPrompt(dashboardAppsDir);
+    const plugins = this.pluginStorageService.getAllPlugins().map((p) => {
+      const activeVersion = this.pluginStorageService.getActiveVersion(p.id);
+      return { slug: p.slug, name: p.name, description: p.description, version: activeVersion?.version || null };
+    });
+    const systemPrompt = this.projectConfigService.generateCatalogPrompt(dashboardAppsDir, plugins);
 
     // Use first project's path as default cwd, or PROJECTS_ROOT_DIR
     const cwd = projects[0].path || this.configService.get<string>('PROJECTS_ROOT_DIR') || '/projects';

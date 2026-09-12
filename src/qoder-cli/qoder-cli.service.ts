@@ -52,6 +52,8 @@ export class QoderCliService {
       NO_BROWSER: '1',
       CI: '1',
       HOME: process.env.HOME || '/root',
+      // Lazy-load MCP servers to reduce first-turn overhead
+      QODER_MCP_LAZY: '1',
     };
   }
 
@@ -89,9 +91,11 @@ export class QoderCliService {
         .replace(/[&|<>^]/g, '^$&');
       const args = ['/c', qoder.cmd, '-p', safePrompt, '-f', 'stream-json'];
       if (model) args.push('--model', model);
-      if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+      if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
       if (systemPrompt) args.push('--append-system-prompt', systemPrompt);
       if (cwd) args.push('--cwd', cwd);
+      // Proxy optimizations: no disk sessions, no interactive permission prompts
+      args.push('--no-session-persistence', '--permission-mode', 'bypass_permissions');
       if (flags.length) args.push(...flags);
       return spawn('cmd.exe', args, {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -100,9 +104,11 @@ export class QoderCliService {
     } else {
       const args = ['-p', prompt, '-f', 'stream-json'];
       if (model) args.push('--model', model);
-      if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath);
+      if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
       if (systemPrompt) args.push('--append-system-prompt', systemPrompt);
       if (cwd) args.push('--cwd', cwd);
+      // Proxy optimizations: no disk sessions, no interactive permission prompts
+      args.push('--no-session-persistence', '--permission-mode', 'bypass_permissions');
       if (flags.length) args.push(...flags);
       return spawn(qoder.cmd, args, {
         stdio: ['ignore', 'pipe', 'pipe'],

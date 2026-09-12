@@ -53,6 +53,7 @@ const config_1 = require("@nestjs/config");
 const dashboard_auth_guard_1 = require("./common/guards/dashboard-auth.guard");
 const qoder_cli_service_1 = require("./qoder-cli/qoder-cli.service");
 const log_store_service_1 = require("./log-store/log-store.service");
+const dashboard_apps_service_1 = require("./dashboard-apps/dashboard-apps.service");
 const qoder_cli_models_1 = require("./qoder-cli/qoder-cli.models");
 const format_1 = require("./utils/format");
 const PUBLIC_DIR = path.join(__dirname, 'dashboard', 'public');
@@ -61,10 +62,11 @@ const statusCache = {
     version: null,
 };
 let DashboardController = class DashboardController {
-    constructor(configService, qoderCliService, logStoreService) {
+    constructor(configService, qoderCliService, logStoreService, dashboardAppsService) {
         this.configService = configService;
         this.qoderCliService = qoderCliService;
         this.logStoreService = logStoreService;
+        this.dashboardAppsService = dashboardAppsService;
     }
     async refreshQoderStatus() {
         const version = await this.qoderCliService.checkQoderCli();
@@ -106,6 +108,9 @@ let DashboardController = class DashboardController {
             authEnabled: !!this.configService.get('API_KEY'),
             version: '2.0.0',
         };
+    }
+    getApps() {
+        return { apps: this.dashboardAppsService.listApps() };
     }
     async getStatus() {
         const now = Date.now();
@@ -246,6 +251,15 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], DashboardController.prototype, "getConfig", null);
 __decorate([
+    (0, common_1.Get)('api/apps'),
+    (0, common_1.UseGuards)(dashboard_auth_guard_1.DashboardAuthGuard),
+    (0, swagger_1.ApiOperation)({ summary: 'List dashboard mini-apps' }),
+    (0, swagger_1.ApiResponse)({ status: 200, description: 'List of dashboard apps with metadata' }),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", void 0)
+], DashboardController.prototype, "getApps", null);
+__decorate([
     (0, common_1.Get)('api/status'),
     (0, common_1.UseGuards)(dashboard_auth_guard_1.DashboardAuthGuard),
     (0, swagger_1.ApiOperation)({ summary: 'Dashboard status' }),
@@ -308,5 +322,6 @@ exports.DashboardController = DashboardController = __decorate([
     (0, common_1.Controller)('dashboard'),
     __metadata("design:paramtypes", [config_1.ConfigService,
         qoder_cli_service_1.QoderCliService,
-        log_store_service_1.LogStoreService])
+        log_store_service_1.LogStoreService,
+        dashboard_apps_service_1.DashboardAppsService])
 ], DashboardController);

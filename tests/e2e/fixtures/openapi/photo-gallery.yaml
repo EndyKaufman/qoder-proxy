@@ -1,0 +1,144 @@
+openapi: 3.0.0
+info:
+  title: Photo Gallery Plugin
+  description: Mobile-first photo gallery with upload, search, pagination, and CRUD operations
+  version: 1.0.0
+paths:
+  /photos:
+    get:
+      summary: List photos with pagination and search
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Filter by description (LIKE match)
+      responses:
+        '200':
+          description: Paginated photo list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        filename:
+                          type: string
+                        description:
+                          type: string
+                        downloadUrl:
+                          type: string
+                        created_at:
+                          type: string
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  pages:
+                    type: integer
+    post:
+      summary: Create a new photo entry and get presigned upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - filename
+                - contentType
+              properties:
+                filename:
+                  type: string
+                contentType:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Photo entry created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  uploadUrl:
+                    type: string
+                  key:
+                    type: string
+  /photos/{id}:
+    get:
+      summary: Get photo details with presigned download URL
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Photo details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  filename:
+                    type: string
+                  description:
+                    type: string
+                  downloadUrl:
+                    type: string
+                  created_at:
+                    type: string
+    put:
+      summary: Update photo description
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Photo updated
+    delete:
+      summary: Delete photo (metadata + MinIO object)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Photo deleted
