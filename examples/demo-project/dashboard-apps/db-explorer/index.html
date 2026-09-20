@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🐘 DB Explorer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+    .header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      border-bottom: 1px solid #334155;
+      padding: 20px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .header h1 { font-size: 24px; font-weight: 600; }
+    .header .badge {
+      background: #3b82f6;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .container {
+      display: flex;
+      height: calc(100vh - 73px);
+    }
+    .sidebar {
+      width: 280px;
+      background: #1e293b;
+      border-right: 1px solid #334155;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    .sidebar-title {
+      padding: 16px 20px 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      font-weight: 600;
+    }
+    .table-item {
+      padding: 12px 20px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .table-item:hover { background: #334155; }
+    .table-item.active {
+      background: #1e3a5f;
+      border-left-color: #3b82f6;
+    }
+    .table-item .name { font-weight: 500; }
+    .table-item .count {
+      font-size: 12px;
+      color: #64748b;
+      background: #0f172a;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .main {
+      flex: 1;
+      overflow: auto;
+      padding: 24px 32px;
+    }
+    .welcome {
+      text-align: center;
+      padding: 80px 20px;
+      color: #64748b;
+    }
+    .welcome h2 { font-size: 48px; margin-bottom: 16px; }
+    .welcome p { font-size: 18px; }
+    .table-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .table-header h2 { font-size: 22px; }
+    .table-header .row-count {
+      color: #64748b;
+      font-size: 14px;
+    }
+    .columns-section {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .columns-section h3 {
+      font-size: 14px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .column-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .column-chip {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+    }
+    .column-chip .type {
+      color: #3b82f6;
+      margin-left: 6px;
+      font-size: 11px;
+    }
+    .data-table {
+      width: 100%;
+      background: #1e293b;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #334155;
+    }
+    .data-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .data-table th {
+      background: #0f172a;
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+      font-weight: 600;
+      border-bottom: 1px solid #334155;
+    }
+    .data-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #1e293b;
+      font-size: 14px;
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .data-table tr:hover td { background: #334155; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .null-value { color: #64748b; font-style: italic; }
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      color: #64748b;
+    }
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🐘 DB Explorer</h1>
+    <span class="badge">demo-project</span>
+  </div>
+  
+  <div class="container">
+    <div class="sidebar">
+      <div class="sidebar-title">Tables</div>
+      <div id="table-list"></div>
+    </div>
+    
+    <div class="main" id="main-content">
+      <div class="welcome">
+        <h2>🐘</h2>
+        <p>Выбери таблицу слева для просмотра</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let tables = [];
+
+    async function loadTables() {
+      const res = await fetch('/api/tables');
+      tables = await res.json();
+      renderTableList();
+    }
+
+    function renderTableList() {
+      const list = document.getElementById('table-list');
+      list.innerHTML = tables.map(t => `
+        <div class="table-item" data-name="${t.table_name}" onclick="selectTable('${t.table_name}')">
+          <span class="name">${t.table_name}</span>
+          <span class="count">${Number(t.row_count).toLocaleString()}</span>
+        </div>
+      `).join('');
+    }
+
+    async function selectTable(name) {
+      document.querySelectorAll('.table-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.name === name);
+      });
+
+      const main = document.getElementById('main-content');
+      main.innerHTML = '<div class="loading"><div class="spinner"></div>Загрузка...</div>';
+
+      const res = await fetch(`/api/table/${name}`);
+      const data = await res.json();
+
+      const columnsHtml = data.columns.map(c => `
+        <div class="column-chip">
+          ${c.column_name}<span class="type">${c.data_type}</span>
+        </div>
+      `).join('');
+
+      const headersHtml = data.columns.map(c => `<th>${c.column_name}</th>`).join('');
+      const rowsHtml = data.rows.map(row => `
+        <tr>
+          ${data.columns.map(c => {
+            const val = row[c.column_name];
+            if (val === null) return '<td><span class="null-value">NULL</span></td>';
+            return `<td>${escapeHtml(String(val))}</td>`;
+          }).join('')}
+        </tr>
+      `).join('');
+
+      main.innerHTML = `
+        <div class="table-header">
+          <h2>${name}</h2>
+          <span class="row-count">${data.rows.length} строк${data.rows.length === 100 ? ' (лимит 100)' : ''}</span>
+        </div>
+        <div class="columns-section">
+          <h3>Колонки (${data.columns.length})</h3>
+          <div class="column-list">${columnsHtml}</div>
+        </div>
+        <div class="data-table">
+          <table>
+            <thead><tr>${headersHtml}</tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    loadTables();
+  </script>
+</body>
+</html>

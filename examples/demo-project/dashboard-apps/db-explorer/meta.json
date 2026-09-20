@@ -1,0 +1,6 @@
+{
+  "name": "DB Explorer",
+  "description": "PostgreSQL database explorer — tables, rows, schema",
+  "icon": "🐘",
+  "project": "demo-project"
+}

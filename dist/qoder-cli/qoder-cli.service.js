@@ -48,6 +48,14 @@ const config_1 = require("@nestjs/config");
 const child_process_1 = require("child_process");
 const fs = __importStar(require("fs"));
 const log_store_service_1 = require("../log-store/log-store.service");
+// Lazy SDK import to avoid ESM issues in tests
+let sdkModule = null;
+async function getSdk() {
+    if (!sdkModule) {
+        sdkModule = await Promise.resolve().then(() => __importStar(require('@qoder-ai/qoder-agent-sdk')));
+    }
+    return sdkModule;
+}
 const isBenignQoderStderr = (text) => {
     if (!text)
         return false;
@@ -61,171 +69,134 @@ let QoderCliService = class QoderCliService {
         this.configService = configService;
         this.logStoreService = logStoreService;
     }
-    qoderEnv() {
-        const pat = this.configService.get('QODER_PAT');
+    useSdk() {
+        return this.configService.get('QODER_USE_SDK') !== 'false';
+    }
+    /**
+     * Load MCP servers config from JSON file and convert to SDK format.
+     */
+    loadMcpServers(mcpConfigPath) {
+        if (!mcpConfigPath || !fs.existsSync(mcpConfigPath))
+            return undefined;
+        try {
+            const config = JSON.parse(fs.readFileSync(mcpConfigPath, 'utf-8'));
+            if (!config.mcpServers)
+                return undefined;
+            const servers = {};
+            for (const [name, serverConfig] of Object.entries(config.mcpServers)) {
+                const cfg = serverConfig;
+                servers[name] = {
+                    command: cfg.command,
+                    args: cfg.args,
+                    env: cfg.env,
+                };
+            }
+            return servers;
+        }
+        catch (err) {
+            console.error('[qodercli] Failed to load MCP config:', err);
+            return undefined;
+        }
+    }
+    /**
+     * Run request using the SDK (preferred).
+     */
+    async runWithSdk(opts) {
+        const { prompt, model, timeoutMs = 120_000, mcpConfigPath, systemPrompt, cwd, onChunk, onDone, onError, } = opts;
+        // Lazy load SDK
+        const sdk = await getSdk();
+        const { query, accessTokenFromEnv } = sdk;
+        const mcpServers = this.loadMcpServers(mcpConfigPath);
+        const startTime = Date.now();
+        let aborted = false;
+        // Build SDK options
+        const queryOptions = {
+            auth: accessTokenFromEnv(),
+            cwd: cwd || process.cwd(),
+            permissionMode: 'bypassPermissions',
+            maxTurns: 50,
+        };
+        if (model && model !== 'auto') {
+            queryOptions.model = model;
+        }
+        if (systemPrompt) {
+            queryOptions.systemPrompt = systemPrompt;
+        }
+        if (mcpServers) {
+            queryOptions.mcpServers = mcpServers;
+            queryOptions.strictMcpConfig = true;
+        }
+        // Start the query
+        const q = query({
+            prompt,
+            options: queryOptions,
+        });
+        // Timeout handling
+        const timeoutHandle = timeoutMs > 0
+            ? setTimeout(() => {
+                aborted = true;
+                try {
+                    q.interrupt();
+                }
+                catch { /* ignore */ }
+                onError(Object.assign(new Error(`qodercli timed out after ${timeoutMs}ms`), { code: 'TIMEOUT' }));
+            }, timeoutMs)
+            : undefined;
+        // Process the async message stream
+        (async () => {
+            try {
+                for await (const message of q) {
+                    if (aborted)
+                        break;
+                    if (message.type === 'assistant') {
+                        const content = message.message?.content;
+                        if (content) {
+                            onChunk({
+                                type: 'assistant',
+                                subtype: 'message',
+                                message: {
+                                    content: Array.isArray(content) ? content : [{ type: 'text', text: String(content) }],
+                                },
+                            });
+                        }
+                    }
+                    else if (message.type === 'result') {
+                        // Final result
+                        if (timeoutHandle)
+                            clearTimeout(timeoutHandle);
+                        onDone(0, '');
+                    }
+                }
+                // If we exit the loop without a result message
+                if (!aborted && timeoutHandle) {
+                    clearTimeout(timeoutHandle);
+                    onDone(0, '');
+                }
+            }
+            catch (err) {
+                if (timeoutHandle)
+                    clearTimeout(timeoutHandle);
+                if (!aborted) {
+                    this.logStoreService.addSystem(err.message, 'error', 'qodercli-sdk');
+                    onError(err);
+                }
+            }
+        })();
         return {
-            ...process.env,
-            ...(pat ? { QODER_PERSONAL_ACCESS_TOKEN: pat } : {}),
-            NO_BROWSER: '1',
-            CI: '1',
-            HOME: process.env.HOME || '/root',
-            // Lazy-load MCP servers to reduce first-turn overhead
-            QODER_MCP_LAZY: '1',
+            kill: () => {
+                aborted = true;
+                try {
+                    q.interrupt();
+                }
+                catch { /* ignore */ }
+            },
+            pid: undefined,
         };
     }
-    getQoderCliCommand() {
-        if (process.platform === 'win32')
-            return { cmd: 'qodercli.cmd', viaCmd: true };
-        if (process.env.QODERCLI_BIN)
-            return { cmd: process.env.QODERCLI_BIN, viaCmd: false };
-        const candidates = [
-            '/usr/local/bin/qodercli',
-            '/usr/bin/qodercli',
-            'qodercli',
-        ];
-        for (const c of candidates) {
-            if (c.includes('/') && fs.existsSync(c))
-                return { cmd: c, viaCmd: false };
-        }
-        return { cmd: 'qodercli', viaCmd: false };
-    }
-    spawnQoderCli(prompt, model, flags = [], mcpConfigPath, systemPrompt, cwd) {
-        const qoder = this.getQoderCliCommand();
-        if (process.platform === 'win32') {
-            const safePrompt = prompt
-                .replace(/"/g, '\\"')
-                .replace(/[&|<>^]/g, '^$&');
-            const args = ['/c', qoder.cmd, '-p', safePrompt, '-f', 'stream-json'];
-            if (model)
-                args.push('--model', model);
-            if (mcpConfigPath)
-                args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
-            if (systemPrompt)
-                args.push('--append-system-prompt', systemPrompt);
-            if (cwd)
-                args.push('--cwd', cwd);
-            // Proxy optimizations: no disk sessions, no interactive permission prompts
-            args.push('--no-session-persistence', '--permission-mode', 'bypass_permissions');
-            if (flags.length)
-                args.push(...flags);
-            return (0, child_process_1.spawn)('cmd.exe', args, {
-                stdio: ['ignore', 'pipe', 'pipe'],
-                env: this.qoderEnv(),
-            });
-        }
-        else {
-            const args = ['-p', prompt, '-f', 'stream-json'];
-            if (model)
-                args.push('--model', model);
-            if (mcpConfigPath)
-                args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
-            if (systemPrompt)
-                args.push('--append-system-prompt', systemPrompt);
-            if (cwd)
-                args.push('--cwd', cwd);
-            // Proxy optimizations: no disk sessions, no interactive permission prompts
-            args.push('--no-session-persistence', '--permission-mode', 'bypass_permissions');
-            if (flags.length)
-                args.push(...flags);
-            return (0, child_process_1.spawn)(qoder.cmd, args, {
-                stdio: ['ignore', 'pipe', 'pipe'],
-                env: this.qoderEnv(),
-            });
-        }
-    }
-    hasVisibleAssistantText(data) {
-        const content = data?.message?.content;
-        if (typeof content === 'string')
-            return content.trim().length > 0;
-        if (!Array.isArray(content))
-            return false;
-        return content.some((part) => {
-            if (!part)
-                return false;
-            if (typeof part.text === 'string' && part.text.trim())
-                return true;
-            if (typeof part.value === 'string' && part.value.trim())
-                return true;
-            return false;
-        });
-    }
-    deepFindText(value, depth = 0) {
-        if (depth > 6 || value == null)
-            return '';
-        if (typeof value === 'string')
-            return value.trim();
-        if (Array.isArray(value)) {
-            for (const item of value) {
-                const t = this.deepFindText(item, depth + 1);
-                if (t)
-                    return t;
-            }
-            return '';
-        }
-        if (typeof value === 'object') {
-            const priorityKeys = [
-                'text', 'value', 'result', 'output', 'content', 'message', 'final', 'answer',
-            ];
-            for (const key of priorityKeys) {
-                if (Object.prototype.hasOwnProperty.call(value, key)) {
-                    const t = this.deepFindText(value[key], depth + 1);
-                    if (t)
-                        return t;
-                }
-            }
-            // Fallback: recurse into all own properties
-            for (const key of Object.keys(value)) {
-                if (!priorityKeys.includes(key)) {
-                    const t = this.deepFindText(value[key], depth + 1);
-                    if (t)
-                        return t;
-                }
-            }
-        }
-        return '';
-    }
-    extractEventText(data) {
-        if (!data || typeof data !== 'object')
-            return '';
-        const msg = data.message;
-        const msgContent = msg?.content;
-        if (typeof msgContent === 'string' && msgContent.trim())
-            return msgContent;
-        if (Array.isArray(msgContent)) {
-            const joined = msgContent
-                .map((part) => {
-                if (!part)
-                    return '';
-                if (typeof part === 'string')
-                    return part;
-                if (typeof part.text === 'string')
-                    return part.text;
-                if (typeof part.value === 'string')
-                    return part.value;
-                if (typeof part.text?.value === 'string')
-                    return part.text.value;
-                return '';
-            })
-                .join('');
-            if (joined.trim())
-                return joined;
-        }
-        if (typeof data.result === 'string' && data.result.trim())
-            return data.result;
-        if (data.result && typeof data.result === 'object') {
-            const r = data.result;
-            if (typeof r.text === 'string' && r.text.trim())
-                return r.text;
-            if (typeof r.value === 'string' && r.value.trim())
-                return r.value;
-            if (typeof r.text?.value === 'string' &&
-                r.text.value.trim()) {
-                return r.text.value;
-            }
-        }
-        return this.deepFindText(data);
-    }
-    runQoderRequest(opts) {
+    /**
+     * Run request using spawn (fallback).
+     */
+    runWithSpawn(opts) {
         const { prompt, model, flags = [], timeoutMs = 120_000, mcpConfigPath, systemPrompt, cwd, onChunk, onDone, onError, } = opts;
         let buffer = '';
         let stderrOutput = '';
@@ -355,6 +326,204 @@ let QoderCliService = class QoderCliService {
             settle(() => onError(err));
         });
         return child;
+    }
+    /**
+     * Run a qodercli request. Uses SDK if available, falls back to spawn.
+     */
+    runQoderRequest(opts) {
+        if (this.useSdk()) {
+            // Run SDK asynchronously but return a handle immediately
+            let handle = { kill: () => { }, pid: undefined };
+            this.runWithSdk(opts).then((h) => { handle = h; });
+            // Return a proxy that delegates to the actual handle
+            return {
+                kill: () => handle.kill(),
+                pid: undefined,
+                stdout: null,
+                stderr: null,
+                stdin: null,
+                on: () => { },
+                once: () => { },
+                emit: () => false,
+                removeListener: () => { },
+                addListener: () => { },
+                off: () => { },
+                removeAllListeners: () => { },
+                setMaxListeners: () => { },
+                getMaxListeners: () => 0,
+                listeners: () => [],
+                rawListeners: () => [],
+                listenerCount: () => 0,
+                prependListener: () => { },
+                prependOnceListener: () => { },
+                eventNames: () => [],
+                [Symbol.for('nodejs.event_target')]: false,
+            };
+        }
+        return this.runWithSpawn(opts);
+    }
+    // -------------------------------------------------------------------------
+    // Spawn-based implementation (fallback)
+    // -------------------------------------------------------------------------
+    qoderEnv() {
+        const pat = this.configService.get('QODER_PAT');
+        return {
+            ...process.env,
+            ...(pat ? { QODER_PERSONAL_ACCESS_TOKEN: pat } : {}),
+            NO_BROWSER: '1',
+            CI: '1',
+            HOME: process.env.HOME || '/root',
+            QODER_MCP_LAZY: '1',
+        };
+    }
+    getQoderCliCommand() {
+        if (process.platform === 'win32')
+            return { cmd: 'qodercli.cmd', viaCmd: true };
+        if (process.env.QODERCLI_BIN)
+            return { cmd: process.env.QODERCLI_BIN, viaCmd: false };
+        const candidates = [
+            '/usr/local/bin/qodercli',
+            '/usr/bin/qodercli',
+            'qodercli',
+        ];
+        for (const c of candidates) {
+            if (c.includes('/') && fs.existsSync(c))
+                return { cmd: c, viaCmd: false };
+        }
+        return { cmd: 'qodercli', viaCmd: false };
+    }
+    spawnQoderCli(prompt, model, flags = [], mcpConfigPath, systemPrompt, cwd) {
+        const qoder = this.getQoderCliCommand();
+        if (process.platform === 'win32') {
+            const safePrompt = prompt
+                .replace(/"/g, '\\"')
+                .replace(/[&|<>^]/g, '^$&');
+            const args = ['/c', qoder.cmd, '-p', safePrompt, '-f', 'stream-json'];
+            if (model)
+                args.push('--model', model);
+            if (mcpConfigPath)
+                args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
+            if (systemPrompt)
+                args.push('--append-system-prompt', systemPrompt);
+            if (cwd)
+                args.push('--cwd', cwd);
+            args.push('--no-session-persistence', '--permission-mode', 'bypass_permissions');
+            if (flags.length)
+                args.push(...flags);
+            return (0, child_process_1.spawn)('cmd.exe', args, {
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env: this.qoderEnv(),
+            });
+        }
+        else {
+            const args = ['-p', prompt, '-f', 'stream-json'];
+            if (model)
+                args.push('--model', model);
+            if (mcpConfigPath)
+                args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
+            if (systemPrompt)
+                args.push('--append-system-prompt', systemPrompt);
+            if (cwd)
+                args.push('--cwd', cwd);
+            args.push('--no-session-persistence', '--permission-mode', 'bypass_permissions');
+            if (flags.length)
+                args.push(...flags);
+            return (0, child_process_1.spawn)(qoder.cmd, args, {
+                stdio: ['ignore', 'pipe', 'pipe'],
+                env: this.qoderEnv(),
+            });
+        }
+    }
+    hasVisibleAssistantText(data) {
+        const content = data?.message?.content;
+        if (typeof content === 'string')
+            return content.trim().length > 0;
+        if (!Array.isArray(content))
+            return false;
+        return content.some((part) => {
+            if (!part)
+                return false;
+            if (typeof part.text === 'string' && part.text.trim())
+                return true;
+            if (typeof part.value === 'string' && part.value.trim())
+                return true;
+            return false;
+        });
+    }
+    deepFindText(value, depth = 0) {
+        if (depth > 6 || value == null)
+            return '';
+        if (typeof value === 'string')
+            return value.trim();
+        if (Array.isArray(value)) {
+            for (const item of value) {
+                const t = this.deepFindText(item, depth + 1);
+                if (t)
+                    return t;
+            }
+            return '';
+        }
+        if (typeof value === 'object') {
+            const priorityKeys = [
+                'text', 'value', 'result', 'output', 'content', 'message', 'final', 'answer',
+            ];
+            for (const key of priorityKeys) {
+                if (Object.prototype.hasOwnProperty.call(value, key)) {
+                    const t = this.deepFindText(value[key], depth + 1);
+                    if (t)
+                        return t;
+                }
+            }
+            for (const key of Object.keys(value)) {
+                if (!priorityKeys.includes(key)) {
+                    const t = this.deepFindText(value[key], depth + 1);
+                    if (t)
+                        return t;
+                }
+            }
+        }
+        return '';
+    }
+    extractEventText(data) {
+        if (!data || typeof data !== 'object')
+            return '';
+        const msg = data.message;
+        const msgContent = msg?.content;
+        if (typeof msgContent === 'string' && msgContent.trim())
+            return msgContent;
+        if (Array.isArray(msgContent)) {
+            const joined = msgContent
+                .map((part) => {
+                if (!part)
+                    return '';
+                if (typeof part === 'string')
+                    return part;
+                if (typeof part.text === 'string')
+                    return part.text;
+                if (typeof part.value === 'string')
+                    return part.value;
+                if (typeof part.text?.value === 'string')
+                    return part.text.value;
+                return '';
+            })
+                .join('');
+            if (joined.trim())
+                return joined;
+        }
+        if (typeof data.result === 'string' && data.result.trim())
+            return data.result;
+        if (data.result && typeof data.result === 'object') {
+            const r = data.result;
+            if (typeof r.text === 'string' && r.text.trim())
+                return r.text;
+            if (typeof r.value === 'string' && r.value.trim())
+                return r.value;
+            if (typeof r.text?.value === 'string' &&
+                r.text.value.trim()) {
+                return r.text.value;
+            }
+        }
+        return this.deepFindText(data);
     }
     checkQoderCli() {
         return new Promise((resolve) => {

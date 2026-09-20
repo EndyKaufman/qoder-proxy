@@ -7,6 +7,7 @@ export interface AppConfig {
   QODER_TIMEOUT_MS: number;
   QODER_MAX_OUTPUT_TOKENS: string;
   QODER_PAT: string | null;
+  QODER_USE_SDK: boolean;
   PUBLIC_BASE_URL: string | null;
   DASHBOARD_ENABLED: boolean;
   DASHBOARD_PASSWORD: string | null;
@@ -33,6 +34,7 @@ export default (): AppConfig => ({
     process.env.QODER_PERSONAL_ACCESS_TOKEN ||
     process.env.QODER_API_KEY ||
     null,
+  QODER_USE_SDK: process.env.QODER_USE_SDK !== 'false',
   PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || null,
 
   // Dashboard

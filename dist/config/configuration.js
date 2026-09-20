@@ -46,6 +46,7 @@ exports.default = () => ({
     QODER_PAT: process.env.QODER_PERSONAL_ACCESS_TOKEN ||
         process.env.QODER_API_KEY ||
         null,
+    QODER_USE_SDK: process.env.QODER_USE_SDK !== 'false',
     PUBLIC_BASE_URL: process.env.PUBLIC_BASE_URL || null,
     // Dashboard
     DASHBOARD_ENABLED: process.env.DASHBOARD_ENABLED !== 'false',
